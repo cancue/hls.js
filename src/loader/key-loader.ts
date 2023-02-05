@@ -170,6 +170,10 @@ export default class KeyLoader implements ComponentAPI {
       mediaKeySessionContext: null,
     };
 
+    if (this.config.clearkeys) {
+      return this.loadKeyEME(keyInfo, frag);
+    }
+
     switch (decryptdata.method) {
       case 'ISO-23001-7':
       case 'SAMPLE-AES':

@@ -105,6 +105,7 @@ export type EMEControllerConfig = {
   ) => ArrayBuffer;
   emeEnabled: boolean;
   widevineLicenseUrl?: string;
+  clearkeys?: { [keyid: string]: string };
   drmSystems: DRMSystemsConfiguration;
   drmSystemOptions: DRMSystemOptions;
   requestMediaKeySystemAccessFunc: MediaKeyFunc | null;
@@ -331,6 +332,7 @@ export const hlsDefaultConfig: HlsConfig = {
   minAutoBitrate: 0, // used by hls
   emeEnabled: false, // used by eme-controller
   widevineLicenseUrl: undefined, // used by eme-controller
+  clearkeys: undefined,
   drmSystems: {}, // used by eme-controller
   drmSystemOptions: {}, // used by eme-controller
   requestMediaKeySystemAccessFunc: __USE_EME_DRM__

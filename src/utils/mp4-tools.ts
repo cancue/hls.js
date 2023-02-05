@@ -1055,7 +1055,7 @@ export function mp4Box(type: ArrayLike<number>, ...payload: Uint8Array[]) {
 export function mp4pssh(
   systemId: Uint8Array,
   keyids: Array<Uint8Array> | null,
-  data: Uint8Array
+  data?: Uint8Array
 ) {
   if (systemId.byteLength !== 16) {
     throw new RangeError('Invalid system id');

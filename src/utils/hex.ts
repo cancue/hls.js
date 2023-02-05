@@ -15,6 +15,11 @@ const Hex = {
     }
     return str;
   },
+  decode: function (str: string): Uint8Array {
+    const hex = str.match(/.{1,2}/g);
+    if (!hex) return new Uint8Array();
+    return Uint8Array.from(hex.map((byte) => parseInt(byte, 16)));
+  },
 };
 
 export default Hex;

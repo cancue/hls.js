@@ -19,11 +19,11 @@ import {
   KeySystems,
   requestMediaKeySystemAccess,
 } from '../utils/mediakeys-helper';
-import { strToUtf8array } from '../utils/keysystem-util';
-import { base64Decode } from '../utils/numeric-encoding-utils';
+import { changeEndianness, strToUtf8array } from '../utils/keysystem-util';
+import { base64Decode, base64UrlEncode } from '../utils/numeric-encoding-utils';
 import { DecryptData, LevelKey } from '../loader/level-key';
 import Hex from '../utils/hex';
-import { bin2str, parsePssh, parseSinf } from '../utils/mp4-tools';
+import { bin2str, mp4pssh, parsePssh, parseSinf } from '../utils/mp4-tools';
 import EventEmitter from 'eventemitter3';
 import type Hls from '../hls';
 import type { ComponentAPI } from '../types/component-api';
@@ -90,6 +90,7 @@ class EMEController implements ComponentAPI {
   constructor(hls: Hls) {
     this.hls = hls;
     this.config = hls.config;
+    this.registerClearKeySystem();
     this.registerListeners();
   }
 
@@ -102,6 +103,24 @@ class EMEController implements ComponentAPI {
       this.onWaitingForKey =
       this.keyIdToKeySessionPromise =
         null as any;
+  }
+
+  private registerClearKeySystem() {
+    if (!this.config.clearkeys || this.config.drmSystems['org.w3.clearkey'])
+      return;
+    const generateRequest = () => {
+      return {
+        initDataType: 'cenc',
+        initData: mp4pssh(
+          Hex.decode('1077efecc0b24d02ace33c1e52e2fb4b'),
+          Object.keys(this.config.clearkeys!).map(Hex.decode)
+        ),
+      };
+    };
+    this.config.drmSystems['org.w3.clearkey'] = {
+      licenseUrl: 'localhost',
+      generateRequest,
+    };
   }
 
   private registerListeners() {
@@ -978,11 +997,65 @@ class EMEController implements ComponentAPI {
       });
   }
 
+  private generateClearKeyLicense(
+    keySessionContext: MediaKeySessionContext
+  ): ArrayBuffer | null {
+    const keyId = keySessionContext.decryptdata.keyId;
+
+    if (!keyId || !this.config.clearkeys) return null;
+
+    const hexKeyId = Hex.hexDump(keyId);
+    const keys: {
+      kty: 'oct';
+      kid: string;
+      k: string;
+    }[] = [];
+    for (const clearkey of Object.entries(this.config.clearkeys)) {
+      const key = Hex.decode(clearkey[1]);
+
+      if (hexKeyId === clearkey[0]) {
+        keySessionContext.decryptdata.key = key;
+      }
+
+      keys.push({
+        kty: 'oct',
+        kid: base64UrlEncode(Hex.decode(clearkey[0])),
+        k: base64UrlEncode(key),
+      });
+    }
+
+    return new TextEncoder().encode(
+      JSON.stringify({
+        keys,
+        type: 'temporary',
+      })
+    );
+  }
+
   private requestLicense(
     keySessionContext: MediaKeySessionContext,
     licenseChallenge: Uint8Array
   ): Promise<ArrayBuffer> {
     return new Promise((resolve, reject) => {
+      if (keySessionContext.keySystem === KeySystems.CLEARKEY) {
+        const result = this.generateClearKeyLicense(keySessionContext);
+        if (result) {
+          resolve(result);
+        } else {
+          reject(
+            new EMEKeyError(
+              {
+                type: ErrorTypes.KEY_SYSTEM_ERROR,
+                details: ErrorDetails.KEY_SYSTEM_LICENSE_REQUEST_FAILED,
+                fatal: true,
+              },
+              `No clearkeys configured for key-system "${KeySystems.CLEARKEY}"`
+            )
+          );
+        }
+        return;
+      }
+
       const url = this.getLicenseServerUrl(keySessionContext.keySystem);
       this.log(`Sending license request to URL: ${url}`);
       const xhr = new XMLHttpRequest();
